@@ -1,6 +1,8 @@
 
 #ifndef CPP_HSE_BMP_H
 #define CPP_HSE_BMP_H
+#include <atomic>
+#include <mutex>
 #include "matrix.h"
 #include <string>
 struct RGB;
@@ -11,23 +13,30 @@ public:
     explicit FileReadErrorException(const std::string& str);
     const char* what() const noexcept override;
 };
-
+class BMP;
+class BMPWindow;
 class BMP {
 public:
+    friend BMPWindow;
     const static inline unsigned char RGB_LIMIT = 255;
     static const inline double DRGB_LIMIT = 255.0;
     BMP();
     BMP(const BMP& bmp) = delete;
     void Read(char* file_name);
     void Write(char* file_name);
-    std::pair<size_t, size_t> GetSize();
-    void Resize(size_t new_height, size_t new_width);
-    RGB& operator()(size_t height, size_t width);
-    TMatrix<RGB>& GetMatrix();
+    virtual std::pair<size_t, size_t> GetSize();
+    virtual void Resize(size_t new_height, size_t new_width);
+    virtual const RGB& operator()(int64_t height, int64_t width);
+    virtual void ChangePixel(RGB color, int64_t height, int64_t width);
+    virtual void ApplyChanges();
+    void Divide(size_t threads_count);
+    virtual ~BMP();
+    std::vector<BMPWindow> windows;
 
 protected:
     void ReadHeader(std::ifstream& file, char* file_name);
     void ReadPixels(std::ifstream& file, char* file_name);
+    TMatrix<RGB>& GetMatrix();
     struct __attribute__((packed)) BmpHeader {
         char signature[2];
         uint32_t file_size;
@@ -49,14 +58,33 @@ protected:
     };
     size_t height_;
     size_t width_;
-
+    std::atomic<size_t> ApplyCounter_{0};
+    size_t WindowCount_;
+    std::mutex ApplyMutex_;
     BmpHeader header_;
     BmpInfo info_;
     TMatrix<RGB> matrix_;
+    TMatrix<RGB> buffer_matrix_;
+};
+class BMPWindow: public BMP{
+public:
+    BMPWindow(BMP& parent,size_t x,size_t y,size_t width,size_t height);
+    void Resize(size_t new_height, size_t new_width)override;
+    void ApplyChanges()override;
+    const RGB& operator()(int64_t height, int64_t width)override;
+    void ChangePixel(RGB color, int64_t height, int64_t width)override;
+    BMPWindow(BMPWindow& other);
+
+    BMPWindow(BMPWindow&& other);
+
+protected:
+    BMP& parent_;
+    size_t y_;
+    size_t x_;
+
 };
 
-struct RGB {
-    // даблы чтобы в фильтрах не накапливалась ошибка, буду преобразовывать при записи
+struct RGB  {
     double red = 0;
     double green = 0;
     double blue = 0;

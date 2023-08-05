@@ -2,6 +2,7 @@
 #include "application.h"
 #include "bmp.h"
 #include <iostream>
+#include "string.h"
 std::vector<FilterDescriptor> Application::PickDescriptions(int argc, char** argv) {
     std::vector<FilterDescriptor> ans;
     if (argc < 3) {
@@ -10,9 +11,23 @@ std::vector<FilterDescriptor> Application::PickDescriptions(int argc, char** arg
     file_name_ = argv[1];
     output_file_name_ = argv[2];
     FilterDescriptor curr;
+    int thread_number_final = 1;
     bool is_filter = false;
     for (int i = 3; i < argc; ++i) {
         if (argv[i][0] == '-') {
+
+            if(strcmp(argv[i],"-threads") == 0){
+                if(i+1== argc){
+                    throw new CommandLineException("No number of threads given");
+                }
+                thread_number_final = std::stoi(argv[i+1]);
+
+                if(curr.threads_num<=0){
+                    throw new CommandLineException("Threads number can not be less than 0");
+                }
+                ++i;
+                continue;
+            }
             if (is_filter) {
                 ans.push_back(curr);
                 curr = FilterDescriptor();
@@ -28,7 +43,9 @@ std::vector<FilterDescriptor> Application::PickDescriptions(int argc, char** arg
     if (is_filter) {
         ans.push_back(curr);
     }
-
+    for(auto& t : ans){
+        t.threads_num = thread_number_final;
+    }
     return ans;
 }
 
@@ -68,7 +85,15 @@ void Application::FillCreators() {
     filter_creators_.insert({static_cast<std::string_view>("rainbow"), &filter_creators::CreateRainbow});
 }
 Filter* Application::CreateFilter(const FilterDescriptor& params) {
-    return filter_creators_[params.name](params);
+
+    Filter* f = filter_creators_[params.name](params);
+    f->threads = params.threads_num;
+
+    if(strcmp( params.name,"crop" ) == 0){
+        f->threads = 1;
+    }
+    return f;
+
 }
 CommandLineException::CommandLineException(const std::string& str) {
     message_ = "CommandLineException: " + str;

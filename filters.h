@@ -12,12 +12,16 @@ public:
 };
 class Filter {
 public:
+    uint16_t threads = 1;
     virtual bool ApplyFilter(BMP& bmp) = 0;
+
     virtual ~Filter();
+
 };
 struct FilterDescriptor {
     char* name;
     std::vector<char*> arguments;
+    unsigned short threads_num = 1;
 };
 class Crop : public Filter {
 public:

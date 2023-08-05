@@ -35,6 +35,7 @@ void BMP::Read(char *file_name) {
     int32_t width = info_.width;
     int32_t height = info_.height;
     matrix_ = TMatrix<RGB>(height, width);
+    buffer_matrix_ = TMatrix<RGB>(height, width);
     height_ = height;
     width_ = width;
     ReadPixels(file, file_name);
@@ -55,7 +56,19 @@ void BMP::Resize(size_t new_height, size_t new_width) {
     info_.width = static_cast<int32_t>(new_width);
     info_.height = static_cast<int32_t>(new_height);
 }
-RGB &BMP::operator()(size_t height, size_t width) {
+const RGB &BMP::operator()(int64_t height, int64_t width) {
+    if (height < 0) {
+        height = 0;
+    }
+    if (width < 0) {
+        width = 0;
+    }
+    if (height >= static_cast<int64_t>(height_)) {
+        height = height_ - 1;
+    }
+    if (width >= static_cast<int64_t>(width_)) {
+        width = width_ - 1;
+    }
     return matrix_(height, width);
 }
 TMatrix<RGB> &BMP::GetMatrix() {
@@ -103,10 +116,81 @@ void BMP::ReadPixels(std::ifstream &file, char *file_name) {
         }
     }
 }
+void BMP::ChangePixel(RGB color, int64_t height, int64_t width) {
+    if (height < 0) {
+        height = 0;
+    }
+    if (width < 0) {
+        width = 0;
+    }
+    if (height >= static_cast<int64_t>(height_)) {
+        height = height_ - 1;
+    }
+    if (width >= static_cast<int64_t>(width_)) {
+        width = width_ - 1;
+    }
+    buffer_matrix_(height, width) = color;
+}
+void BMP::ApplyChanges() {
+    matrix_ = std::move(buffer_matrix_);
+    buffer_matrix_ = matrix_;
+}
+void BMP::Divide(size_t threads_count) {
+     threads_count = std::min(threads_count,width_);
+     WindowCount_ = threads_count;
+     windows.clear();
+     for(size_t x = 0;x<width_;x+=width_/threads_count){
+         if(x+width_/threads_count*2-1>=width_){
+             windows.push_back({*this,x,0,width_-x,height_});
+         }
+         windows.push_back({*this,x,0,width_/threads_count,height_});
+     }
+}
+BMP::~BMP() {
+}
 
 const char *FileReadErrorException::what() const noexcept {
     return message_.c_str();
 }
 FileReadErrorException::FileReadErrorException(const std::string &str) {
     message_ = "FileReadException:" + str;
+}
+BMPWindow::BMPWindow(BMP &parent, size_t x, size_t y, size_t width, size_t height)
+    : parent_(parent), y_(y), x_(x)  {
+    BMP::height_ = height;
+    BMP::width_ = width;
+}
+void BMPWindow::Resize(size_t new_height, size_t new_width) {
+    throw new std::logic_error("BMPWindow cannot be resized");
+}
+void BMPWindow::ApplyChanges() {
+    parent_.ApplyCounter_.fetch_add(1, std::memory_order_seq_cst);
+    if (parent_.ApplyCounter_ == parent_.WindowCount_) {
+        if (ApplyMutex_.try_lock()) {
+            if (parent_.ApplyCounter_ != 0) {
+
+                parent_.ApplyChanges();
+            }
+            parent_.ApplyCounter_ = 0;
+            ApplyMutex_.unlock();
+        }
+    }
+}
+const RGB &BMPWindow::operator()(int64_t height, int64_t width) {
+    return parent_(y_ + height, x_ + width);
+}
+void BMPWindow::ChangePixel(RGB color, int64_t height, int64_t width) {
+    parent_.ChangePixel(color, y_ + height, x_ + width);
+}
+BMPWindow::BMPWindow(BMPWindow& other):parent_(other.parent_){
+    x_ = other.x_;
+    y_ = other.y_;
+    height_ = other.height_;
+    width_ = other.width_;
+}
+BMPWindow::BMPWindow(BMPWindow&& other):parent_(other.parent_){
+    x_ = other.x_;
+    y_ = other.y_;
+    height_ = other.height_;
+    width_ = other.width_;
 }

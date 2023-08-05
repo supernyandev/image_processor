@@ -106,7 +106,6 @@ public:
     };
 
 public:
-    // TODO: исправить)
     TMatrix(std::initializer_list<std::initializer_list<T>> lists) {
         uint32_t cnt_rows = 0;
         for (const auto& list : lists) {
