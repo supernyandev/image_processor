@@ -5,6 +5,8 @@
 #include <mutex>
 #include "matrix.h"
 #include <string>
+#include <barrier>
+#include <condition_variable>
 struct RGB;
 class FileReadErrorException : public std::exception {
     std::string message_;
@@ -17,6 +19,7 @@ class BMP;
 class BMPWindow;
 class BMP {
 public:
+
     friend BMPWindow;
     const static inline unsigned char RGB_LIMIT = 255;
     static const inline double DRGB_LIMIT = 255.0;
@@ -61,6 +64,9 @@ protected:
     std::atomic<size_t> ApplyCounter_{0};
     size_t WindowCount_;
     std::mutex ApplyMutex_;
+
+    std::barrier<>* WaitBarrier;
+
     BmpHeader header_;
     BmpInfo info_;
     TMatrix<RGB> matrix_;

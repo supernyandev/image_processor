@@ -136,17 +136,25 @@ void BMP::ApplyChanges() {
     buffer_matrix_ = matrix_;
 }
 void BMP::Divide(size_t threads_count) {
-     threads_count = std::min(threads_count,width_);
-     WindowCount_ = threads_count;
-     windows.clear();
-     for(size_t x = 0;x<width_;x+=width_/threads_count){
-         if(x+width_/threads_count*2-1>=width_){
-             windows.push_back({*this,x,0,width_-x,height_});
-         }
-         windows.push_back({*this,x,0,width_/threads_count,height_});
-     }
+    threads_count = std::min(threads_count, width_);
+    if (!WaitBarrier) {
+        delete WaitBarrier;
+    }
+    WaitBarrier = new std::barrier(threads_count);
+    WindowCount_ = threads_count;
+    windows.clear();
+    for (size_t x = 0; x < width_; x += width_ / threads_count) {
+        if (x + width_ / threads_count * 2 - 1 >= width_) {
+            windows.push_back({*this, x, 0, width_ - x, height_});
+            continue ;
+        }
+        windows.push_back({*this, x, 0, width_ / threads_count, height_});
+    }
 }
 BMP::~BMP() {
+    if (!WaitBarrier) {
+        delete WaitBarrier;
+    }
 }
 
 const char *FileReadErrorException::what() const noexcept {
@@ -155,8 +163,7 @@ const char *FileReadErrorException::what() const noexcept {
 FileReadErrorException::FileReadErrorException(const std::string &str) {
     message_ = "FileReadException:" + str;
 }
-BMPWindow::BMPWindow(BMP &parent, size_t x, size_t y, size_t width, size_t height)
-    : parent_(parent), y_(y), x_(x)  {
+BMPWindow::BMPWindow(BMP &parent, size_t x, size_t y, size_t width, size_t height) : parent_(parent), y_(y), x_(x) {
     BMP::height_ = height;
     BMP::width_ = width;
 }
@@ -166,15 +173,18 @@ void BMPWindow::Resize(size_t new_height, size_t new_width) {
 void BMPWindow::ApplyChanges() {
     parent_.ApplyCounter_.fetch_add(1, std::memory_order_seq_cst);
     if (parent_.ApplyCounter_ == parent_.WindowCount_) {
-        if (ApplyMutex_.try_lock()) {
-            if (parent_.ApplyCounter_ != 0) {
 
-                parent_.ApplyChanges();
-            }
-            parent_.ApplyCounter_ = 0;
-            ApplyMutex_.unlock();
+        parent_.ApplyMutex_.lock();
+
+        if (parent_.ApplyCounter_ != 0) {
+            parent_.ApplyChanges();
         }
+        parent_.ApplyCounter_ = 0;
+        parent_.ApplyMutex_.unlock();
     }
+
+    parent_.WaitBarrier->arrive_and_wait();
+
 }
 const RGB &BMPWindow::operator()(int64_t height, int64_t width) {
     return parent_(y_ + height, x_ + width);
@@ -182,13 +192,14 @@ const RGB &BMPWindow::operator()(int64_t height, int64_t width) {
 void BMPWindow::ChangePixel(RGB color, int64_t height, int64_t width) {
     parent_.ChangePixel(color, y_ + height, x_ + width);
 }
-BMPWindow::BMPWindow(BMPWindow& other):parent_(other.parent_){
+BMPWindow::BMPWindow(BMPWindow &other) : parent_(other.parent_) {
     x_ = other.x_;
     y_ = other.y_;
     height_ = other.height_;
     width_ = other.width_;
+    WindowCount_ = parent_.WindowCount_;
 }
-BMPWindow::BMPWindow(BMPWindow&& other):parent_(other.parent_){
+BMPWindow::BMPWindow(BMPWindow &&other) : parent_(other.parent_) {
     x_ = other.x_;
     y_ = other.y_;
     height_ = other.height_;

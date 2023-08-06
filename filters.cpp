@@ -39,7 +39,10 @@ Filter* filter_creators::CreateEdge(const FilterDescriptor& params) {
     return new EdgeDetection(atof(params.arguments[0]));
 }
 Filter* filter_creators::CreateGauss(const FilterDescriptor& params) {
-    return nullptr;
+    if (params.arguments.size() != 1) {
+        throw FilterException("invalid number of arguments");
+    }
+    return new GaussianBlur(atof(params.arguments[0]));
 }
 Filter* filter_creators::CreateRainbow(const FilterDescriptor& params) {
     if (!params.arguments.empty()) {
@@ -50,8 +53,9 @@ Filter* filter_creators::CreateRainbow(const FilterDescriptor& params) {
 bool Negative::ApplyFilter(BMP& bmp) {
     for (size_t i = 0; i < bmp.GetSize().second; ++i) {
         for (size_t j = 0; j < bmp.GetSize().first; ++j) {
-            bmp.ChangePixel({BMP::DRGB_LIMIT - bmp(i, j).red, BMP::DRGB_LIMIT - bmp(i, j).green,
-                         BMP::DRGB_LIMIT - bmp(i, j).blue},i,j);
+            bmp.ChangePixel(
+                {BMP::DRGB_LIMIT - bmp(i, j).red, BMP::DRGB_LIMIT - bmp(i, j).green, BMP::DRGB_LIMIT - bmp(i, j).blue},
+                i, j);
         }
     }
     bmp.ApplyChanges();
@@ -66,9 +70,9 @@ bool Grayscale::ApplyFilter(BMP& bmp) {
 
             double color = gs_red * bmp(i, j).red + gs_green * bmp(i, j).green + gs_blue * bmp(i, j).blue;
 
-            RGB cl = {color,color,color};
+            RGB cl = {color, color, color};
             cl.Normalize();
-            bmp.ChangePixel(cl ,i,j);
+            bmp.ChangePixel(cl, i, j);
         }
     }
     bmp.ApplyChanges();
@@ -89,7 +93,7 @@ void MatrixFilter::ApplyMatrix(BMP& bmp) {
                 }
             }
             final.Normalize();
-            bmp.ChangePixel(final,i, j);
+            bmp.ChangePixel(final, i, j);
         }
     }
     bmp.ApplyChanges();
@@ -108,9 +112,9 @@ bool EdgeDetection::ApplyFilter(BMP& bmp) {
     for (int64_t i = 0; i < static_cast<int64_t>(bmp.GetSize().second); ++i) {
         for (int64_t j = 0; j < static_cast<int64_t>(bmp.GetSize().first); ++j) {
             if (bmp(i, j).red / static_cast<double>(BMP::RGB_LIMIT) <= threshold_) {
-                bmp.ChangePixel({},i,j);
+                bmp.ChangePixel({}, i, j);
             } else {
-                bmp.ChangePixel( {BMP::RGB_LIMIT, BMP::RGB_LIMIT, BMP::RGB_LIMIT},i,j);
+                bmp.ChangePixel({BMP::RGB_LIMIT, BMP::RGB_LIMIT, BMP::RGB_LIMIT}, i, j);
             }
         }
     }
@@ -146,15 +150,69 @@ bool Rainbow::ApplyFilter(BMP& bmp) {
     for (int64_t i = 0; i < static_cast<int64_t>(bmp.GetSize().second); ++i) {
         for (int64_t j = 0; j < static_cast<int64_t>(bmp.GetSize().first); ++j) {
             double x = static_cast<double>(i) / static_cast<double>(bmp.GetSize().second);
-            RGB c = bmp(i, j)+ RGB{(BMP::DRGB_LIMIT * Gaussian(x, sigma_red, b1) / damp +
-                                       BMP::DRGB_LIMIT * Gaussian(x, sigma, b4) / damp) *
-                                          intencivity,
-                                      (BMP::DRGB_LIMIT * Gaussian(x, sigma, b2) / damp_green) * intencivity,
-                                      (BMP::DRGB_LIMIT * Gaussian(x, sigma_blue, b3) / damp) * intencivity};
+            RGB c = bmp(i, j) + RGB{(BMP::DRGB_LIMIT * Gaussian(x, sigma_red, b1) / damp +
+                                     BMP::DRGB_LIMIT * Gaussian(x, sigma, b4) / damp) *
+                                        intencivity,
+                                    (BMP::DRGB_LIMIT * Gaussian(x, sigma, b2) / damp_green) * intencivity,
+                                    (BMP::DRGB_LIMIT * Gaussian(x, sigma_blue, b3) / damp) * intencivity};
             c.Normalize();
-            bmp.ChangePixel(c,i,j);
+            bmp.ChangePixel(c, i, j);
         }
-        bmp.ApplyChanges();
     }
+    bmp.ApplyChanges();
+    return true;
+}
+const TMatrix<double>& GaussianBlur::GetSum() {
+    return Weighted_Sum_;
+}
+GaussianBlur::GaussianBlur(double sigma) {
+    sigma_ = sigma;
+    size_t sz = 1;
+    const long double threshold = GetCoefficient(0, 0, 0, 0)/3;
+    TMatrix<long double> Weighted_Sum_L;
+    for (int i = 0; i < 100; ++i) {
+        long double k = GetCoefficient(0, i, 0, 0);
+        k+=1;
+        k-=1;
+        if (GetCoefficient(0, i, 0, 0) < threshold) {
+            sz = i + i + 1;
+            break;
+        }
+    }
+    Weighted_Sum_L.Resize(sz, sz, 0);
+    for (size_t i = 0; i < sz; ++i) {
+        for (size_t j = 0; j < sz; ++j) {
+            Weighted_Sum_L(i, j) = GetCoefficient(i, sz / 2 + 1, j, sz / 2 + 1);
+        }
+    }
+    Weighted_Sum_L = Normalize(Weighted_Sum_L);
+    Weighted_Sum_.Resize(sz,sz,0);
+    for (size_t i = 0; i < sz; ++i) {
+        for (size_t j = 0; j < sz; ++j) {
+            Weighted_Sum_(i, j) = Weighted_Sum_L(i,j);
+        }
+    }
+
+}
+double GaussianBlur::GetCoefficient(long double x, long double x0, long double y, long double y0) {
+    return (long double)(1.0) / ((long double)(2 * std::numbers::pi * sigma_ * sigma_)) * expl(-(abs(x - x0) + abs(y - y0)) / (2 * sigma_ * sigma_));
+}
+TMatrix<long double> GaussianBlur::Normalize(TMatrix<long double>  m) {
+    long double sm = 0;
+    for (size_t i = 0; i < m.GetCollsNum(); ++i) {
+        for (size_t j = 0; j < m.GetRowsNum(); ++j) {
+            sm += m(i, j);
+        }
+    }
+
+    for (size_t i = 0; i < m.GetCollsNum(); ++i) {
+        for (size_t j = 0; j < m.GetRowsNum(); ++j) {
+            m(i, j) = m(i, j) / sm;
+        }
+    }
+    return m;
+}
+bool GaussianBlur::ApplyFilter(BMP& bmp) {
+    ApplyMatrix(bmp);
     return true;
 }

@@ -67,9 +67,16 @@ protected:
     static const inline TMatrix<double> WEIGHTED_SUM{{{0, -1, 0}, {-1, 4, -1}, {0, -1, 0}}};
     const TMatrix<double>& GetSum() override;
 };
-class GaussianBlur : public Filter {
+class GaussianBlur : public MatrixFilter {
 public:
+    explicit GaussianBlur(double sigma);
     bool ApplyFilter(BMP& bmp) override;
+protected:
+    double sigma_;
+    double GetCoefficient(long double x,long double x0,long double y,long double y0);
+    TMatrix<long double> Normalize(TMatrix<long double> m);
+    TMatrix<double> Weighted_Sum_;
+    const TMatrix<double>& GetSum() override;
 };
 class Rainbow : public Filter {
 public:
