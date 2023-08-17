@@ -9,7 +9,7 @@ bool Crop::ApplyFilter(BMP& bmp) {
 Crop::Crop(uint32_t new_width, uint32_t new_height) : new_width_{new_width}, new_height_{new_height} {
 }
 Filter* filter_creators::CreateCrop(const FilterDescriptor& params) {
-    if (params.arguments.size() != 1) {
+    if (params.arguments.size() != 2) {
         throw FilterException("invalid number of arguments");
     }
     return new Crop(atoi(params.arguments[0]), atoi(params.arguments[1]));

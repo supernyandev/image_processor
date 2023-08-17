@@ -100,20 +100,68 @@ C[x][y] =
 
 ## Реализация
 
-Применять сторонние библиотеки для работы с изображениями запрещено.
-
-Старайтесь делать все компоненты программы по возможности более универсальными и не привязанными к специфике конкретной задачи.
-
-Все исключительные ситуации должны корректно обрабатываться с выводом понятного пользователю сообщения об ошибке.
-Никакие сценарии, включая использование файлов с форматом, не соответствующим спецификации, не должны приводить к "падению" программы.
-
-Скорее всего, вам понадобятся следующие компоненты:
 - Класс, представляющий изображение и обеспечивающий работу с ним
 - Классы для чтения и записи формата BMP
 - Фильтры
 - Контроллер, управляющий последовательным применением фильтров
 
-Общие части следует выделить через наследование.
+## Многопоточность
 
-Подробный дизайн программы рекомендуется обсудить с преподавателем на семинарах.
+Аргумент -threads threads_num регулирует количество потоков которые используется при исполнении:
+картинка делится на num_threads частей и к каждой применяется фильтр по-отдельности
+(на фильтр crop аргумент не влияет, он всегда выполняется в одном потоке). Большее число потоков уменьшает время 
+исполнения в зависимости от сложности фильтра, например фильтр gaussian blur в среднем работает быстрее в 3 раза.
 
+## Примеры применения фильтров:
+ <img src="readme_files/lenna.bmp" alt="drawing" height="300"/>
+
+
+### 1) Crop
+lenna.bmp lenna_crop.bmp -crop 900 1400
+
+Время выполнения: 638ms
+
+<img src="readme_files/lenna_crop.bmp" alt="drawing" height="300"/>
+
+### 2) Grayscale
+lenna.bmp lenna_crop.bmp -gs -threads 4
+ 
+Время выполнения: 1033ms
+
+<img src="readme_files/lenna_gs.bmp" alt="drawing" height="300"/>
+
+### 3) Negative
+lenna.bmp lenna_crop.bmp -neg -threads 4
+
+Время выполнения: 1025ms
+
+<img src="readme_files/lenna_neg.bmp" alt="drawing" height="300"/>
+
+### 4) Sharpening
+lenna.bmp lenna_crop.bmp -sharp -threads 4
+
+Время выполнения: 1458ms
+
+<img src="readme_files/lenna_sharp.bmp" alt="drawing" height="300"/>
+
+### 5) Edge detection
+lenna.bmp lenna_crop.bmp -edge 0.2 -threads 4
+
+Время выполнения: 1649ms
+
+<img src="readme_files/lenna_edge.bmp" alt="drawing" height="300"/>
+
+### 6) Gaussian blur
+lenna.bmp lenna_crop.bmp -blur 2 -threads 4
+
+Время выполнения: 10669ms (при -threads 1 : 32783ms)
+
+<img src="readme_files/lenna_blur.bmp" alt="drawing" height="300"/>
+
+#### blur+edge detection:
+
+lenna.bmp lenna_crop.bmp -blur 0.5 -edge 0.02 -threads 4
+
+Время выполнения: 2162ms 
+
+<img src="readme_files/lenna_blur_edge.bmp" alt="drawing" height="300"/>
